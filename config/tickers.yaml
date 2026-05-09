@@ -1,0 +1,11 @@
+# Default ticker universe and date range for experiments.
+# Sample CSVs in input/ (read-only) cover this same range for offline reproducibility.
+
+default_range:
+  start: "2018-01-01"
+  end: "2024-12-31"
+
+tickers:
+  - META
+  - GOOG
+  - NVDA

@@ -1,0 +1,31 @@
+# Pinned for Python 3.12 on macOS arm64 (Apple Silicon, MPS backend).
+# NOTE: pandas_ta 0.3.* is NOT on PyPI for 3.12 — only the 0.4.71b0 release
+# ships a 3.12-compatible wheel, and it requires numpy>=2.2.6 and pandas>=2.3.2.
+# This forces numpy 2.x, pandas 2.3.x, and torch 2.5.x (first stable line with
+# numpy-2 support across cuda + mps wheels).
+
+# Deep learning + RL
+torch>=2.5,<2.6
+gymnasium==0.29.*
+
+# Data + market
+yfinance==0.2.*
+pandas==2.3.*
+pandas_ta==0.4.71b0
+# numpy upper bound 2.3 forced by numba 0.61.2 (transitive dep of pandas_ta).
+numpy>=2.2.6,<2.3
+# pyarrow 15.x caps numpy<2; bumped to 18.x for numpy-2 compatibility.
+pyarrow==18.*
+
+# GUI
+PyQt6==6.7.*
+pyqtgraph==0.13.*
+mplfinance==0.12.*
+
+# Tracking / utils
+tensorboard==2.16.*
+pyyaml==6.*
+psutil==5.9.*
+
+# Test
+pytest==8.*

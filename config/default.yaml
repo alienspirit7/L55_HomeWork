@@ -1,0 +1,63 @@
+# Default hyperparameters for the Dueling Double DQN trading project.
+# All values frozen here; src/ never hardcodes hyperparameters.
+# See PLAN.md "Locked Decisions" for rationale.
+
+# ---------- DATA PIPELINE ----------
+data:
+  window: 30                        # observation window (bars) — agent sees last 30 days
+  n_features: 10                    # 8 market indicators + 2 agent-state features
+  normalization_split: train        # fit scaler on train slice only (leak-free)
+  volume_norm_window: 60            # rolling z-score window (days) for volume, fit on train
+  split_train: 0.70                 # temporal 70/15/15 split (chronological order)
+  split_val: 0.15
+  split_test: 0.15
+  cache_ttl_hours: 24               # parquet cache invalidation window
+
+# ---------- API GATEKEEPER (token-bucket rate limiter) ----------
+gatekeeper:
+  rate_limit_per_min: 10
+  rate_limit_per_hour: 100
+  rate_limit_concurrent: 2          # threading.Semaphore size
+  rate_limit_burst: 5
+  rate_limit_burst_window_sec: 10
+
+# ---------- TRADING ENVIRONMENT ----------
+env:
+  n_actions: 3                      # 0=Hold, 1=Buy, 2=Sell
+  init_cash: 10000                  # starting capital, USD
+  fee_bps: 10                       # 10 bps applied on Buy and Sell (notional)
+  # Action sizing: all-in / all-out (locked decision).
+  # Reward: Δ unrealized PnL of mark-to-market portfolio minus fees on Buy/Sell ticks.
+  # Execution: next-bar-open to avoid same-bar look-ahead.
+
+# ---------- DUELING DOUBLE DQN ----------
+model:
+  gamma: 0.99                       # discount factor
+  huber_delta: 1.0                  # Huber loss δ
+  # Network architecture (see src/models/dueling_dqn.py):
+  #   trunk: flatten(window×features) → Linear(256) → ReLU → Linear(256) → ReLU
+  #   V head: Linear(256→128) → ReLU → Linear(128→1)
+  #   A head: Linear(256→128) → ReLU → Linear(128→n_actions)
+  #   aggregation: Q = V + (A − A.mean(dim=-1, keepdim=True))
+
+# ---------- TRAINING ----------
+train:
+  lr: 1.0e-4                        # Adam learning rate
+  batch: 64                         # SGD minibatch
+  buffer: 100000                    # uniform replay capacity
+  target_sync_steps: 1000           # hard sync of target network
+  eps_start: 1.0                    # ε-greedy schedule (linear)
+  eps_end: 0.05
+  eps_decay_steps: 50000
+  train_steps: 200000               # total optimization steps per seed
+  eval_every: 5000                  # eval cadence + ckpt save
+  grad_clip: 10.0                   # global norm clip
+  # Failure modes:
+  #   - NaN-loss guard: rollback to last ckpt + halve LR; abort after 3 events.
+  #   - CUDA/MPS OOM: halve batch and retry once.
+
+# ---------- EVALUATION ----------
+eval:
+  seeds: [0, 1, 2]                  # 3-seed protocol; report mean ± std
+  sharpe_annualization: 252         # √252 daily annualization, costs included
+  benchmark: buy_and_hold           # same starting capital + 10 bps entry/exit fee

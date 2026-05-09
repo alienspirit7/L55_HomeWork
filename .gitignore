@@ -1,0 +1,29 @@
+# Virtual environment
+venv/
+.venv/
+
+# Caches and parquet data (regenerated from yfinance / input/ CSVs)
+data/raw/
+
+# Run outputs (models, TB runs, backtest reports, aggregated analysis)
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+
+# Test / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
