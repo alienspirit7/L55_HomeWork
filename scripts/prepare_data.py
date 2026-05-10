@@ -103,6 +103,14 @@ def main(argv=None) -> int:
 
     norm = Normalizer(volume_window=cfg.data.volume_norm_window).fit(train_df)
     train_t, val_t, test_t = norm.transform(train_df), norm.transform(val_df), norm.transform(test_df)
+    # Aligned raw OHLC prices for env execution (next-bar Open) and MTM (Close).
+    raw_aligned = ohlcv.loc[features.index]
+    train_open = raw_aligned.loc[train_t.index, "Open"].to_numpy(dtype=np.float32)
+    val_open = raw_aligned.loc[val_t.index, "Open"].to_numpy(dtype=np.float32)
+    test_open = raw_aligned.loc[test_t.index, "Open"].to_numpy(dtype=np.float32)
+    train_close = raw_aligned.loc[train_t.index, "Close"].to_numpy(dtype=np.float32)
+    val_close = raw_aligned.loc[val_t.index, "Close"].to_numpy(dtype=np.float32)
+    test_close = raw_aligned.loc[test_t.index, "Close"].to_numpy(dtype=np.float32)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -119,6 +127,8 @@ def main(argv=None) -> int:
         npz_path,
         train=_f32(train_t), val=_f32(val_t), test=_f32(test_t),
         train_dates=_iso(train_t.index), val_dates=_iso(val_t.index), test_dates=_iso(test_t.index),
+        train_open=train_open, val_open=val_open, test_open=test_open,
+        train_close=train_close, val_close=val_close, test_close=test_close,
         feature_names=np.array(list(FEATURE_ORDER)),
         normalizer_state=np.array(norm.state_dict(), dtype=object),
         meta=np.array(meta, dtype=object),

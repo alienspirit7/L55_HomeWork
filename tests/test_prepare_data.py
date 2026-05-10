@@ -62,6 +62,19 @@ def test_prepare_data_offline_smoke(monkeypatch, tmp_path):
     assert len(data["train_dates"]) == train.shape[0]
     assert len(data["val_dates"]) == val.shape[0]
     assert len(data["test_dates"]) == test.shape[0]
+    # Aligned raw OHLC prices for env execution (next-bar Open) and MTM (Close).
+    price_keys = {
+        "train_open", "val_open", "test_open",
+        "train_close", "val_close", "test_close",
+    }
+    assert price_keys.issubset(set(data.files)), f"missing price keys: {price_keys - set(data.files)}"
+    for split_name, feats in (("train", train), ("val", val), ("test", test)):
+        op = data[f"{split_name}_open"]
+        cl = data[f"{split_name}_close"]
+        assert op.shape == (feats.shape[0],), f"{split_name}_open shape mismatch"
+        assert cl.shape == (feats.shape[0],), f"{split_name}_close shape mismatch"
+        assert op.dtype == np.float32 and cl.dtype == np.float32
+        assert np.all(op > 0) and np.all(cl > 0), f"{split_name} prices must be positive"
 
 
 def test_history_too_short(monkeypatch, capsys):
