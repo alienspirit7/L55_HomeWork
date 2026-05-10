@@ -23,7 +23,10 @@ pyqtgraph==0.13.*
 mplfinance==0.12.*
 
 # Tracking / utils
-tensorboard==2.16.*
+# tensorboard 2.16 uses np.string_ (removed in numpy 2) — need >=2.18.
+tensorboard>=2.18,<2.21
+# pkg_resources removed in setuptools 81+; tensorboard still imports it.
+setuptools<81
 pyyaml==6.*
 psutil==5.9.*
 
