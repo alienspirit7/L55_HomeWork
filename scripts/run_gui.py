@@ -29,6 +29,10 @@ def _parse_args(argv):
     p.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     p.add_argument("--screenshot", type=Path, default=None,
                    help="Save window grab to this PNG and exit.")
+    p.add_argument("--ticker", default=None,
+                   help="Ticker to preload (used with --autoload).")
+    p.add_argument("--autoload", action="store_true",
+                   help="Load input/{TICKER}.csv into the chart on startup.")
     return p.parse_args(argv)
 
 
@@ -45,6 +49,13 @@ def main(argv=None) -> int:
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
     win = MainWindow()
     win.config_path = str(args.config)
+    if args.ticker:
+        win.ticker_edit.setText(args.ticker.upper())
+    if args.autoload:
+        ticker = (args.ticker or win.ticker_edit.text()).upper()
+        csv = PROJECT_ROOT / "input" / f"{ticker}.csv"
+        if csv.exists():
+            win.candlestick.load_csv(csv)
     win.show()
     if args.screenshot:
         QTimer.singleShot(400, lambda: _capture_and_quit(win, args.screenshot, app))

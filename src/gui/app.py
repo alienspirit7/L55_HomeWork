@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QSplitter, QStatusBar, QToolBar, QVBoxLayout, QWidget,
 )
 
+from src.gui.candlestick import CandlestickWidget
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CONFIG = str(PROJECT_ROOT / "config" / "default.yaml")
 MODELS_DIR = PROJECT_ROOT / "output" / "models"
@@ -96,7 +98,9 @@ class MainWindow(QMainWindow):
         v.setContentsMargins(6, 6, 6, 4)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.splitter.addWidget(self._placeholder("Candlestick goes here", "chart_placeholder"))
+        self.candlestick = CandlestickWidget()
+        self.candlestick.setObjectName("candlestick")
+        self.splitter.addWidget(self.candlestick)
         self.splitter.addWidget(self._placeholder("Analytics goes here", "analytics_placeholder"))
         self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 2)
@@ -131,8 +135,12 @@ class MainWindow(QMainWindow):
     def on_prepare_finished(self, payload: dict) -> None:
         self.btn_train.setEnabled(True)
         self.progress.hide()
-        self.statusBar().showMessage(f"Prepared {payload.get('ticker', '?')}", 5000)
+        ticker = payload.get("ticker", "?")
+        self.statusBar().showMessage(f"Prepared {ticker}", 5000)
         self.lbl_models.setText(f"Models loaded: {_count_models()}")
+        csv_path = PROJECT_ROOT / "input" / f"{ticker}.csv"
+        if csv_path.exists():
+            self.candlestick.load_csv(csv_path)
 
     def on_train_finished(self, payload: dict) -> None:
         self.btn_backtest.setEnabled(True)
