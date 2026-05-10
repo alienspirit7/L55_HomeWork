@@ -29,3 +29,4 @@ psutil==5.9.*
 
 # Test
 pytest==8.*
+pytest-qt==4.4.*
