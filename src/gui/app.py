@@ -14,9 +14,11 @@ from PyQt6.QtWidgets import (
 from src.gui.analytics import AnalyticsPanel
 from src.gui.app_utils import (
     chain_button_enable, count_models, device_label_text, models_loaded_text,
+    show_backtest_dialog,
 )
 from src.gui.candlestick import CandlestickWidget
 from src.gui.telemetry import TelemetryWidget
+from src.gui.worker_runner import make_start_handlers, stop_all_workers
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CONFIG = str(PROJECT_ROOT / "config" / "default.yaml")
@@ -125,23 +127,24 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(self.lbl_models, stretch=1)
         sb.addPermanentWidget(self.progress)
 
-    # ----- slots / wiring ------------------------------------------------
+    # ----- slots / wiring -----------------------------------------------
     def _wire_chain(self) -> None:
         self._slots = chain_button_enable(
             self.btn_prepare, self.btn_train, self.btn_backtest,
             self.btn_predict, self.progress, self.statusBar(),
             self.candlestick, self.lbl_models, PROJECT_ROOT,
         )
+        self._handlers = make_start_handlers(self, PROJECT_ROOT)
+        self.btn_prepare.clicked.connect(self._handlers["start_prepare"])
+        self.btn_train.clicked.connect(self._handlers["start_train"])
+        self.btn_backtest.clicked.connect(self._handlers["start_backtest"])
+        self.btn_predict.clicked.connect(self._handlers["start_predict"])
 
-    def on_prepare_finished(self, payload: dict) -> None:
-        self._slots["on_prepare_finished"](payload)
-
-    def on_train_finished(self, payload: dict) -> None:
-        self._slots["on_train_finished"](payload)
-
+    def on_prepare_finished(self, payload): self._slots["on_prepare_finished"](payload)
+    def on_train_finished(self, payload): self._slots["on_train_finished"](payload)
     def on_backtest_finished(self, payload: dict) -> None:
         self._slots["on_backtest_finished"](payload)
+        show_backtest_dialog(self, payload)
 
     def closeEvent(self, event):  # noqa: N802
-        self.telemetry.stop()
-        super().closeEvent(event)
+        stop_all_workers(self); self.telemetry.stop(); super().closeEvent(event)

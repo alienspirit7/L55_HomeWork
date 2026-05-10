@@ -60,3 +60,23 @@ def load_ckpt(
     if optimizer is not None and "optimizer_state_dict" in state:
         optimizer.load_state_dict(state["optimizer_state_dict"])
     return state
+
+
+def load_online_only(
+    path: str | Path,
+    online: nn.Module,
+    *,
+    map_location: str | torch.device = "cpu",
+) -> tuple[int, int | None]:
+    """Load only the online network weights — for inference (no optimizer/target).
+
+    Returns ``(step, seed)``. ``seed`` is ``None`` if absent from the ckpt.
+    Raises ``FileNotFoundError`` if ``path`` does not exist.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"checkpoint not found: {p}")
+    state = torch.load(str(p), map_location=map_location, weights_only=False)
+    online.load_state_dict(state["online_state_dict"])
+    seed = state.get("seed")
+    return int(state.get("step", 0)), (int(seed) if seed is not None else None)

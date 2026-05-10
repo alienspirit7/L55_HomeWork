@@ -120,11 +120,8 @@ class BacktestWorker(_BaseWorker):
         self.config_path = config_path
 
     def run(self) -> None:
-        cmd = [
-            PYTHON, "scripts/backtest.py",
-            "--model", self.model_path, "--ticker", self.ticker,
-            "--config", self.config_path,
-        ]
+        cmd = [PYTHON, "scripts/backtest.py", "--model", self.model_path,
+               "--ticker", self.ticker, "--config", self.config_path]
         try:
             cp = self._spawn(cmd)
         except OSError as e:
@@ -133,8 +130,13 @@ class BacktestWorker(_BaseWorker):
         if cp.returncode != 0:
             self.error.emit(f"backtest exit {cp.returncode}: {cp.stderr.strip()}")
             return
+        m = re.search(r"seed(\d+)", Path(self.model_path).name)
+        seed = int(m.group(1)) if m else 0
+        base = PROJECT_ROOT / "output" / "backtests" / f"{self.ticker}_seed{seed}"
         self.finished.emit({
             "ticker": self.ticker,
             "summary": _last_summary_line(cp.stdout),
+            "json_path": f"{base}.json",
+            "png_path": f"{base}_equity.png",
             "stdout": cp.stdout,
         })

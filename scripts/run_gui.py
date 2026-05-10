@@ -35,6 +35,10 @@ def _parse_args(argv):
                    help="Load input/{TICKER}.csv into the chart on startup.")
     p.add_argument("--demo-prediction", action="store_true",
                    help=argparse.SUPPRESS)
+    p.add_argument("--predict-on-load", action="store_true",
+                   help="Trigger Predict Next after autoload.")
+    p.add_argument("--backtest-on-load", action="store_true",
+                   help="Trigger Run Backtest after autoload.")
     return p.parse_args(argv)
 
 
@@ -49,10 +53,41 @@ def _apply_demo_prediction(win) -> None:
 
 def _capture_and_quit(window: MainWindow, path: Path, app: QApplication) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    pix = window.grab()
+    target = getattr(window, "backtest_dialog", None) or window
+    pix = target.grab()
     pix.save(str(path), "PNG")
     print(f"saved screenshot: {path}")
     app.quit()
+
+
+def _do_predict(win, ticker: str) -> None:
+    """In-process Predict Next: run worker synchronously, render to panel."""
+    from src.gui.app_utils import apply_prediction
+    from src.gui.predict_worker import (
+        PredictNextWorker, resolve_latest_ckpt, resolve_npz,
+    )
+    ckpt = resolve_latest_ckpt(ticker, PROJECT_ROOT)
+    npz = resolve_npz(ticker, PROJECT_ROOT)
+    if ckpt is None or npz is None:
+        print(f"predict-on-load: missing ckpt or npz for {ticker}"); return
+    w = PredictNextWorker(ticker, str(ckpt), str(npz), str(DEFAULT_CONFIG))
+    out = {}
+    w.finished.connect(lambda p: out.update(p))
+    w.error.connect(lambda e: print(f"predict err: {e}"))
+    w.run()
+    if out:
+        apply_prediction(win, out)
+
+
+def _do_backtest_dialog(win, ticker: str) -> None:
+    """Open the BacktestResultsDialog using existing JSON+PNG artifacts."""
+    from src.gui.app_utils import show_backtest_dialog
+    base = PROJECT_ROOT / "output" / "backtests" / f"{ticker}_seed0"
+    json_p = base.with_suffix(".json"); png_p = Path(f"{base}_equity.png")
+    if not json_p.exists() or not png_p.exists():
+        print(f"backtest-on-load: missing artifacts for {ticker}"); return
+    show_backtest_dialog(win, {"ticker": ticker, "json_path": str(json_p),
+                               "png_path": str(png_p)})
 
 
 def main(argv=None) -> int:
@@ -69,6 +104,11 @@ def main(argv=None) -> int:
             win.candlestick.load_csv(csv)
     if args.demo_prediction:
         _apply_demo_prediction(win)
+    ticker = (args.ticker or win.ticker_edit.text()).upper()
+    if args.predict_on_load:
+        _do_predict(win, ticker)
+    if args.backtest_on_load:
+        _do_backtest_dialog(win, ticker)
     win.show()
     if args.screenshot:
         QTimer.singleShot(400, lambda: _capture_and_quit(win, args.screenshot, app))

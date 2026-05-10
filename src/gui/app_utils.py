@@ -1,5 +1,6 @@
 """Free-function helpers extracted from `src/gui/app.py` to keep MainWindow
 under the 150-line budget. No Qt-window state; only tiny utilities.
+Worker-thread plumbing lives in `worker_runner.py`.
 """
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 MODELS_DIR = PROJECT_ROOT / "output" / "models"
+ACTION_NAMES = ("HOLD", "BUY", "SELL")
 
 
 def device_label_text() -> str:
@@ -71,3 +73,36 @@ def chain_button_enable(prepare_btn, train_btn, backtest_btn, predict_btn,
         "on_train_finished": _on_train,
         "on_backtest_finished": _on_backtest,
     }
+
+
+def apply_prediction(window, payload: dict) -> None:
+    """Render a PredictNextWorker payload onto the analytics panel + status bar."""
+    asof = payload.get("asof", "—")
+    action = int(payload.get("action", 0))
+    q = payload.get("q_values")
+    feats = payload.get("features_row", {}) or {}
+    window.analytics.set_asof(asof)
+    window.analytics.set_prediction(action, q)
+    window.analytics.set_reasoning(feats)
+    name = ACTION_NAMES[action] if 0 <= action < len(ACTION_NAMES) else str(action)
+    window.statusBar().showMessage(
+        f"Predicted {name} for next bar (asof {asof})", 8000,
+    )
+
+
+def show_backtest_dialog(window, payload: dict) -> None:
+    """Open BacktestResultsDialog on top of `window`. Stores ref on window.
+
+    Skips silently if the payload lacks file paths — happens in unit tests
+    that exercise only the button-enable chain.
+    """
+    json_path = payload.get("json_path")
+    png_path = payload.get("png_path")
+    if not json_path or not png_path:
+        return
+    from src.gui.dialogs import BacktestResultsDialog
+    window.backtest_dialog = BacktestResultsDialog(
+        payload.get("ticker", window.ticker_edit.text().strip().upper()),
+        json_path, png_path, parent=window,
+    )
+    window.backtest_dialog.show()

@@ -80,36 +80,31 @@ class AnalyticsPanel(QWidget):
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self); outer.setContentsMargins(6, 6, 6, 6)
+        self.asof_label = QLabel("asof: — → next bar"); self.asof_label.setObjectName("asof_label")
+        self.asof_label.setStyleSheet("color: #888; font-style: italic;")
+        outer.addWidget(self.asof_label)
         gauge = QGroupBox("Action gauge"); gauge.setObjectName("gauge_group")
         glay = QVBoxLayout(gauge)
         for name in ACTION_NAMES:
             row = QLabel(name); row.setObjectName(f"gauge_label_{name}")
             bar = QProgressBar(); bar.setObjectName(f"gauge_bar_{name}")
-            bar.setRange(0, 100)
-            bar.setStyleSheet(_bar_style(ACTION_COLORS[name]))
+            bar.setRange(0, 100); bar.setStyleSheet(_bar_style(ACTION_COLORS[name]))
             self.bars[name] = bar; self.bar_labels[name] = row
             glay.addWidget(row); glay.addWidget(bar)
-
         self.argmax_label = QLabel("—"); self.argmax_label.setObjectName("argmax_label")
-        f = QFont(); f.setPointSize(14); f.setBold(True)
-        self.argmax_label.setFont(f)
+        f = QFont(); f.setPointSize(14); f.setBold(True); self.argmax_label.setFont(f)
         self.argmax_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         glay.addWidget(self.argmax_label)
 
-        self.margin_label = QLabel("Argmax-Q margin: —")
-        self.margin_label.setObjectName("margin_label")
-        self.softconf_label = QLabel("Soft confidence: —")
-        self.softconf_label.setObjectName("softconf_label")
+        self.margin_label = QLabel("Argmax-Q margin: —"); self.margin_label.setObjectName("margin_label")
+        self.softconf_label = QLabel("Soft confidence: —"); self.softconf_label.setObjectName("softconf_label")
         glay.addWidget(self.margin_label); glay.addWidget(self.softconf_label)
         outer.addWidget(gauge)
-
         reasoning = QGroupBox("Reasoning"); reasoning.setObjectName("reasoning_group")
         rlay = QVBoxLayout(reasoning)
-        self.reasoning_label = QLabel("(no prediction yet)")
-        self.reasoning_label.setObjectName("reasoning_label")
+        self.reasoning_label = QLabel("(no prediction yet)"); self.reasoning_label.setObjectName("reasoning_label")
         self.reasoning_label.setWordWrap(True)
-        self.reasoning_label.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.reasoning_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         rlay.addWidget(self.reasoning_label)
         outer.addWidget(reasoning, stretch=1)
 
@@ -138,6 +133,10 @@ class AnalyticsPanel(QWidget):
             bullets = ["Neutral state — no strong signals."]
         body = "\n".join(f"• {b}" for b in bullets)
         self.reasoning_label.setText(f"{body}\n\n{CAVEAT}")
+
+    def set_asof(self, asof: str) -> None:
+        """Set the asof timestamp shown in the panel header."""
+        self.asof_label.setText(f"asof: {asof} → next bar")
 
     def clear(self) -> None:
         for bar in self.bars.values():
