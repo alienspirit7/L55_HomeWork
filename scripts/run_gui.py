@@ -33,7 +33,18 @@ def _parse_args(argv):
                    help="Ticker to preload (used with --autoload).")
     p.add_argument("--autoload", action="store_true",
                    help="Load input/{TICKER}.csv into the chart on startup.")
+    p.add_argument("--demo-prediction", action="store_true",
+                   help=argparse.SUPPRESS)
     return p.parse_args(argv)
+
+
+def _apply_demo_prediction(win) -> None:
+    import numpy as np
+    win.analytics.set_prediction(action=1, q_values=np.array([0.4, 1.8, 0.6]))
+    win.analytics.set_reasoning({
+        "log_return": 1.4, "rsi_14": 0.6, "macd_hist": 0.45, "bbp": 1.15,
+        "vwap_dist": 0.02, "volume_norm": 1.3, "position_flag": 0.0,
+    })
 
 
 def _capture_and_quit(window: MainWindow, path: Path, app: QApplication) -> None:
@@ -56,6 +67,8 @@ def main(argv=None) -> int:
         csv = PROJECT_ROOT / "input" / f"{ticker}.csv"
         if csv.exists():
             win.candlestick.load_csv(csv)
+    if args.demo_prediction:
+        _apply_demo_prediction(win)
     win.show()
     if args.screenshot:
         QTimer.singleShot(400, lambda: _capture_and_quit(win, args.screenshot, app))
