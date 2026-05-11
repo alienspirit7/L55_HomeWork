@@ -1,13 +1,4 @@
-"""Candlestick chart widget (Task 5.2).
-
-Reads OHLCV from ``input/{TICKER}.csv`` directly. Rationale: the NPZ produced
-by ``scripts/prepare_data.py`` only stores Open/Close (no High/Low), so the
-CSV is the simplest source for full OHLC. CSVs are populated in Task 1.3 and
-always available offline.
-
-pyqtgraph 0.13 has no built-in CandlestickItem; we subclass ``GraphicsObject``
-following the pattern from upstream examples (``customGraphicsItem.py``).
-"""
+"""Candlestick chart widget. Reads OHLC from input/{TICKER}.csv or data/raw/{TICKER}.parquet."""
 from __future__ import annotations
 
 import csv
@@ -89,7 +80,6 @@ class CandlestickWidget(QWidget):
         lay.addWidget(self._glw)
         self._plot.setTitle("No data loaded")
 
-    # ----- public API ----------------------------------------------------
     def clear(self) -> None:
         self._plot.clear()
         self._candle_item = None
@@ -105,7 +95,21 @@ class CandlestickWidget(QWidget):
             raise FileNotFoundError(f"CSV not found: {path}")
         rows = self._read_csv(path)
         if max_bars and len(rows) > max_bars:
-            rows = rows[-max_bars:]  # keep most recent N bars
+            rows = rows[-max_bars:]
+        self._render_rows(rows, ticker=path.stem)
+
+    def load_parquet(self, path: str | Path, *, max_bars: int = 500) -> None:
+        """Render OHLC from a fetcher-produced parquet (used when no input CSV)."""
+        import pandas as pd  # lazy
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"parquet not found: {path}")
+        df = pd.read_parquet(path)
+        rows = [(str(getattr(i, "date", lambda: i)()), float(r["Open"]),
+                 float(r["High"]), float(r["Low"]), float(r["Close"]))
+                for i, r in df.iterrows()]
+        if max_bars and len(rows) > max_bars:
+            rows = rows[-max_bars:]
         self._render_rows(rows, ticker=path.stem)
 
     def set_date_range(self, start: str, end: str) -> None:
@@ -118,7 +122,6 @@ class CandlestickWidget(QWidget):
     def colors(self) -> list[str]:
         return list(self._colors)
 
-    # ----- internals -----------------------------------------------------
     @staticmethod
     def _read_csv(path: Path) -> list[tuple[str, float, float, float, float]]:
         out = []

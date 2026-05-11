@@ -54,8 +54,11 @@ def chain_button_enable(prepare_btn, train_btn, backtest_btn, predict_btn,
         status_bar.showMessage(f"Prepared {ticker}", 5000)
         lbl_models.setText(models_loaded_text())
         csv_path = project_root / "input" / f"{ticker}.csv"
+        parquet_path = project_root / "data" / "raw" / f"{ticker}.parquet"
         if csv_path.exists():
             candlestick.load_csv(csv_path)
+        elif parquet_path.exists():
+            candlestick.load_parquet(parquet_path)
 
     def _on_train(_payload: dict) -> None:
         backtest_btn.setEnabled(True)

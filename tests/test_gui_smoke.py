@@ -92,3 +92,49 @@ def test_workers_subprocess_invocation(monkeypatch):
     assert captured.get("val") == 225
     assert captured.get("test") == 225
     assert "output/processed/NVDA.npz" in captured.get("npz_path", "")
+
+
+def test_click_disables_button_and_sets_status(main_window, monkeypatch):
+    """Regression: clicking Prepare must immediately disable the button
+    and show a busy message — was silent before."""
+    from src.gui import worker_runner
+
+    # Stub run_worker so no real subprocess fires.
+    monkeypatch.setattr(worker_runner, "run_worker", lambda *a, **kw: None)
+
+    # Rebuild handlers under the stub (the wired handlers were captured at init).
+    handlers = worker_runner.make_start_handlers(main_window, PROJECT_ROOT)
+    handlers["start_prepare"]()
+
+    assert main_window.btn_prepare.isEnabled() is False
+    assert "Preparing" in main_window.statusBar().currentMessage()
+
+
+def test_on_prepare_falls_back_to_parquet(main_window, tmp_path, monkeypatch):
+    """Regression: when input/{TICKER}.csv is absent but data/raw/{TICKER}.parquet
+    exists, the candlestick must render from the parquet — previously the chart
+    stayed blank with 'No data loaded'."""
+    import pandas as pd
+    # Sandbox project_root so we don't pollute real input/ or data/raw/.
+    fake_root = tmp_path
+    (fake_root / "input").mkdir()
+    (fake_root / "data" / "raw").mkdir(parents=True)
+    parquet_p = fake_root / "data" / "raw" / "FAKE.parquet"
+    pd.DataFrame({
+        "Open": [10.0, 11.0],
+        "High": [11.0, 11.5],
+        "Low": [9.5, 10.0],
+        "Close": [11.0, 10.0],
+        "Volume": [100, 110],
+    }, index=pd.to_datetime(["2024-01-02", "2024-01-03"])).to_parquet(parquet_p)
+
+    from src.gui.app_utils import chain_button_enable
+    from PyQt6.QtWidgets import QProgressBar, QLabel, QStatusBar
+    pb = QProgressBar(); sb = QStatusBar(); lbl = QLabel()
+    slots = chain_button_enable(
+        main_window.btn_prepare, main_window.btn_train,
+        main_window.btn_backtest, main_window.btn_predict,
+        pb, sb, main_window.candlestick, lbl, fake_root,
+    )
+    slots["on_prepare_finished"]({"ticker": "FAKE"})
+    assert main_window.candlestick.bar_count == 2

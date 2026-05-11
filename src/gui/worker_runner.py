@@ -73,13 +73,19 @@ def make_start_handlers(window, project_root: Path) -> dict:
     def _t() -> str:
         return window.ticker_edit.text().strip().upper()
 
+    def _busy(btn, msg: str) -> None:
+        btn.setEnabled(False)
+        window.statusBar().showMessage(msg)
+
     def _start_prepare() -> None:
+        _busy(window.btn_prepare, f"Preparing {_t()} data...")
         run_worker(window, PrepareDataWorker(
             _t(), window.start_edit.date().toString("yyyy-MM-dd"),
             window.end_edit.date().toString("yyyy-MM-dd"), window.config_path,
         ), window.on_prepare_finished)
 
     def _start_train() -> None:
+        _busy(window.btn_train, f"Training {_t()} (3 seeds x 200k steps, ~70 min)...")
         run_worker(window, TrainWorker(_t(), [0], None, window.config_path),
                    window.on_train_finished)
 
@@ -89,6 +95,7 @@ def make_start_handlers(window, project_root: Path) -> dict:
             QMessageBox.warning(window, "No checkpoint",
                                 f"No *_latest.pt found for {_t()}")
             return
+        _busy(window.btn_backtest, f"Backtesting {_t()}...")
         run_worker(window, BacktestWorker(str(ckpt), _t(), window.config_path),
                    window.on_backtest_finished)
 
@@ -99,6 +106,7 @@ def make_start_handlers(window, project_root: Path) -> dict:
             QMessageBox.warning(window, "Missing artifact",
                                 f"Need ckpt and NPZ for {_t()}")
             return
+        _busy(window.btn_predict, f"Predicting next bar for {_t()}...")
         run_worker(window, PredictNextWorker(_t(), str(ckpt), str(npz),
                                              window.config_path),
                    lambda p: apply_prediction(window, p))

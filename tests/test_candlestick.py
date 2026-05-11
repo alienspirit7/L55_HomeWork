@@ -106,3 +106,24 @@ def test_main_window_uses_candlestick_widget(qtbot):
     qtbot.addWidget(win)
     left = win.splitter.widget(0)
     assert isinstance(left, CandlestickWidget), type(left).__name__
+
+
+def test_load_parquet_renders_rows(widget, tmp_path):
+    import pandas as pd
+    p = tmp_path / "FAKE.parquet"
+    df = pd.DataFrame({
+        "Open": [10.0, 11.0, 10.5],
+        "High": [11.0, 11.5, 11.0],
+        "Low": [9.5, 10.0, 10.0],
+        "Close": [11.0, 10.0, 10.8],
+        "Volume": [100, 110, 90],
+    }, index=pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"]))
+    df.to_parquet(p)
+    widget.load_parquet(p)
+    assert widget.bar_count == 3
+    assert widget.colors() == [GREEN, RED, GREEN]
+
+
+def test_load_parquet_missing_file(widget, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        widget.load_parquet(tmp_path / "nope.parquet")
