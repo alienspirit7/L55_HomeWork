@@ -50,6 +50,8 @@ class TelemetryWidget(QWidget):
         super().__init__(parent)
         self.setObjectName("telemetry_widget")
         self._proc = psutil.Process()
+        # Cache Process objects so psutil's per-object cpu_percent baseline survives.
+        self._proc_cache: dict[int, psutil.Process] = {self._proc.pid: self._proc}
         self._primed: set[int] = set()
         self._prime(self._proc)
         self._build_ui()
@@ -99,9 +101,15 @@ class TelemetryWidget(QWidget):
     def _refresh(self) -> None:
         worker = _find_worker_child(self._proc)
         if worker is not None:
-            self._prime(worker)
-            target = worker
-            tag = f"Worker PID {worker.pid}"
+            # Reuse cached object so psutil cpu_percent baseline is preserved.
+            target = self._proc_cache.setdefault(worker.pid, worker)
+            self._prime(target)
+            tag = f"Worker PID {target.pid}"
+            # Evict stale worker entries (PIDs of finished children).
+            for pid in list(self._proc_cache):
+                if pid != self._proc.pid and pid != target.pid:
+                    self._proc_cache.pop(pid, None)
+                    self._primed.discard(pid)
         else:
             target = self._proc
             tag = f"GUI PID {self._proc.pid}"

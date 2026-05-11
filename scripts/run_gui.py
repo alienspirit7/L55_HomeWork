@@ -39,6 +39,11 @@ def _parse_args(argv):
                    help="Trigger Predict Next after autoload.")
     p.add_argument("--backtest-on-load", action="store_true",
                    help="Trigger Run Backtest after autoload.")
+    p.add_argument("--train-on-load", action="store_true",
+                   help="Click Train Model on startup (long-running).")
+    p.add_argument("--snapshot-after", type=float, default=None,
+                   metavar="SECONDS",
+                   help="Save screenshot after SECONDS, keep running.")
     return p.parse_args(argv)
 
 
@@ -100,8 +105,11 @@ def main(argv=None) -> int:
     if args.autoload:
         ticker = (args.ticker or win.ticker_edit.text()).upper()
         csv = PROJECT_ROOT / "input" / f"{ticker}.csv"
+        parquet = PROJECT_ROOT / "data" / "raw" / f"{ticker}.parquet"
         if csv.exists():
             win.candlestick.load_csv(csv)
+        elif parquet.exists():
+            win.candlestick.load_parquet(parquet)
     if args.demo_prediction:
         _apply_demo_prediction(win)
     ticker = (args.ticker or win.ticker_edit.text()).upper()
@@ -109,8 +117,20 @@ def main(argv=None) -> int:
         _do_predict(win, ticker)
     if args.backtest_on_load:
         _do_backtest_dialog(win, ticker)
+    if args.train_on_load:
+        # NPZ must already exist; we force-enable Train and click (skipping Prepare).
+        win.btn_train.setEnabled(True)
+        QTimer.singleShot(200, win.btn_train.click)
     win.show()
-    if args.screenshot:
+    if args.snapshot_after:
+        def _snap():
+            target = getattr(win, "backtest_dialog", None) or win
+            p = args.screenshot or (PROJECT_ROOT / "screenshots" / "snapshot.png")
+            p.parent.mkdir(parents=True, exist_ok=True)
+            target.grab().save(str(p), "PNG")
+            print(f"saved snapshot: {p}")
+        QTimer.singleShot(int(args.snapshot_after * 1000), _snap)
+    elif args.screenshot:
         QTimer.singleShot(400, lambda: _capture_and_quit(win, args.screenshot, app))
     return app.exec()
 
