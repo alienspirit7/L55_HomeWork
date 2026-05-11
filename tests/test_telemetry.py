@@ -32,9 +32,32 @@ def test_telemetry_constructs_and_stops(widget):
 def test_refresh_updates_labels(widget):
     widget._refresh()
     assert "%" in widget.cpu_label.text()
-    assert "%" in widget.mem_label.text()
+    assert "MB" in widget.mem_label.text()
     from src.utils.device import device_label, pick_device
     assert device_label(pick_device()) in widget.backend_label.text()
+    # When no worker child is running, must show the GUI process.
+    assert "GUI PID" in widget.proc_label.text()
+
+
+def test_refresh_picks_up_worker_child(widget, monkeypatch):
+    """Regression: when a workload subprocess is running, telemetry
+    must switch to reporting its metrics, not the GUI's."""
+    import psutil
+    from src.gui import telemetry as tel
+
+    class FakeProc:
+        pid = 99999
+        def cpu_percent(self, interval=None): return 91.7
+        def memory_info(self):
+            class M: rss = 620 * 1024 * 1024
+            return M()
+        def cmdline(self): return ["python", "scripts/run_experiment.py", "--ticker", "TSLA"]
+
+    monkeypatch.setattr(tel, "_find_worker_child", lambda parent: FakeProc())
+    widget._refresh()
+    assert "Worker PID 99999" in widget.proc_label.text()
+    assert "91.7%" in widget.cpu_label.text()
+    assert "620 MB" in widget.mem_label.text()
 
 
 def test_telemetry_no_torch_required_for_construct():
