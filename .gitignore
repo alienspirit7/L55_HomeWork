@@ -6,7 +6,10 @@ venv/
 data/raw/
 
 # Run outputs (models, TB runs, backtest reports, aggregated analysis)
-output/
+output/*
+!output/analysis/
+output/analysis/*
+!output/analysis/qa_audit.md
 
 # Python
 __pycache__/
