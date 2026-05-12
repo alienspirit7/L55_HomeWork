@@ -42,6 +42,80 @@ The pipeline is strictly one-way: every layer can be exercised on its own from `
 
 ---
 
+## Theory
+
+This project layers three ideas on top of vanilla Q-learning. Each one fixes a specific failure mode of the previous step.
+
+### DQN (Deep Q-Network)
+
+Q-learning learns an **action-value function** `Q(s, a)` — the expected discounted sum of future rewards if the agent takes action `a` in state `s` and then follows its current policy. The optimal policy is then simply "in each state, pick the action with the highest Q". Classical Q-learning stores Q in a table, which is impossible when the state is a vector of 10 continuous features.
+
+**DQN** (Mnih et al., 2013/2015, the Atari paper) replaces the table with a neural network `Q_θ(s, a)` and trains it on the Bellman equation:
+
+```
+y  =  r + γ · max_{a'} Q_θ⁻(s', a')
+loss = ( Q_θ(s, a) − y )²
+```
+
+Two stabilization tricks make it actually work:
+
+- **Replay buffer.** Past transitions `(s, a, r, s')` are stored and minibatches are sampled uniformly at random. This breaks the temporal correlation of consecutive states, which otherwise destabilizes SGD.
+- **Target network.** A frozen copy `Q_θ⁻` of the online network is used to compute `y`. Without it, the target moves every gradient step and the loss can never settle. In this project the target is hard-synced from the online weights every 1 000 steps.
+
+For exploration we use **ε-greedy**: with probability ε pick a random action, otherwise pick `argmax_a Q(s, a)`. ε is annealed linearly from 1.0 down to 0.05 over the first 50 k steps.
+
+### Double DQN
+
+Plain DQN systematically **overestimates** Q-values. The reason is the `max` operator in the target: noisy positive estimates get selected, noisy negative ones get discarded, and the bias accumulates.
+
+**Double DQN** (van Hasselt, Guez, Silver, 2016) decouples *action selection* from *action evaluation*:
+
+```
+a*   =  argmax_{a'} Q_θ(s', a')          ← online net picks the action
+y    =  r + γ · Q_θ⁻(s', a*)             ← target net scores it
+```
+
+The online network chooses which next action to bootstrap from; the target network estimates its value. Because the two networks are not perfectly correlated, their errors largely cancel and the overestimation shrinks. In trading this matters specifically because we don't want an inflated Q for "Buy" to convince the agent it's safe to enter a falling market.
+
+### Dueling DQN
+
+In many states, *what action you take barely matters* — for example, in the middle of a strong trend with no position, every action looks roughly the same. Vanilla DQN still has to estimate every `Q(s, a)` independently, which wastes capacity.
+
+**Dueling DQN** (Wang et al., 2016) splits the network into two heads after a shared trunk:
+
+- a **value head** `V(s)` — how good is this state, regardless of action?
+- an **advantage head** `A(s, a)` — how much better is action `a` than average?
+
+These are combined into Q with a mean-centering term to keep V and A identifiable:
+
+```
+Q(s, a) = V(s) + ( A(s, a) − mean_{a'} A(s, a') )
+```
+
+The value head can learn the global "is this a good market to be in" signal once, instead of being implicitly re-learned inside every action's Q. The result is faster, more stable learning, especially in environments — like ours — where most steps are Hold.
+
+The combination used here is therefore **Dueling architecture + Double DQN target + uniform replay + Huber loss**, which is the standard "Rainbow without the bells and whistles" baseline.
+
+---
+
+## Metrics — definitions
+
+All metrics below are computed on **daily** mark-to-market equity over the held-out test split. Let `r_t` be the simple daily return of the strategy on day `t` (after fees), and let `E_t` be the equity curve.
+
+| Metric | Formula | What it tells you |
+|---|---|---|
+| **Total Return** | `E_end / E_start − 1` | Cumulative profit/loss in percent. The headline number, but it tells you nothing about *how* it was earned. |
+| **Sharpe ratio** | `mean(r_t) / std(r_t) · √252` | Risk-adjusted return: excess return per unit of volatility. Annualized (see below). Rule of thumb: > 1 is acceptable, > 2 is good, > 3 is excellent (and probably overfit). |
+| **Max Drawdown (MaxDD)** | `min_t ( E_t / max_{s ≤ t} E_s − 1 )` | The deepest peak-to-trough loss the strategy would have made you sit through. Closer to 0 is better; −20% means at the worst point your account was down 20% from its previous high. |
+| **Sortino ratio** | `mean(r_t) / downside_std(r_t) · √252` (where `downside_std` uses only days with `r_t < 0`) | Like Sharpe, but only the *downside* volatility goes in the denominator. Upside swings stop being "penalized" as risk. Higher than Sharpe by construction when returns are right-skewed. |
+| **Calmar ratio** | `annualized return / |MaxDD|` | Return per unit of worst-case loss. A direct answer to "how much did I earn for the pain I had to endure?" |
+| **Turnover** | `sum of traded notional / average equity` | How often the agent flips between in-market and out-of-market. High turnover ⇒ fees eat the edge. Our 10 bps cost makes this metric matter. |
+| **Win rate** | `# profitable round-trips / # round-trips` | Fraction of completed Buy→Sell cycles that closed at a profit. Doesn't capture trade size, so always read it next to total return. |
+
+"Mean ± std" in the results table is taken **across the 3 seeds**, not across days — i.e. we compute each metric once per seed, then summarize.
+
+---
+
 ## Setup
 
 Requires Python 3.12 (locked — not 3.14: `pandas_ta` wheels are not yet stable there). Apple Silicon MPS is detected automatically; CUDA is also supported; otherwise the trainer falls back to CPU.
@@ -98,6 +172,14 @@ python scripts/train.py --ticker NVDA --seed 0
 ## Results
 
 All numbers are over the held-out **test split (15%)**, 3 independent seeds (0, 1, 2), with 10 bps round-trip transaction costs applied to both the model and the buy-and-hold benchmark. Sharpe is annualized at √252.
+
+**Unpacking that sentence:**
+
+- **Held-out test split (15%).** The 7-year history (2018-01-02 → 2024-12-31) is cut **temporally** into 70% train / 15% validation / 15% test. The test slice is the most recent ~10–11 months of each ticker and the agent never sees it during training. No shuffling — that would leak the future into the past. Every metric in the table comes from this untouched tail.
+- **3 independent seeds (0, 1, 2).** A single DQN run is noisy: replay sampling, network init, ε-greedy exploration, and MPS float nondeterminism all inject randomness. We train the *same* recipe three times with `seed ∈ {0, 1, 2}`, compute metrics on each, and report **mean ± standard deviation across the three seeds**. This is what lets us tell signal from noise.
+- **10 bps round-trip transaction costs.** "bp" = basis point = 0.01%. So 10 bps = 0.10%. "Round-trip" means the full Buy-then-Sell cycle. In our implementation it's modelled as **5 bps per side** — 0.05% deducted on every Buy and 0.05% on every Sell — which represents the realistic cost of trading a liquid US stock through a retail broker (broker fee + bid-ask spread + slippage). The same 10 bps is applied to the buy-and-hold benchmark (one Buy at the start of the test window, one Sell at the end), so the comparison stays fair: both strategies pay to enter and exit.
+- **Buy-and-hold benchmark.** This is the most basic possible "strategy": on the first day of the test split, buy the stock with all the cash; do nothing until the last day; then sell. It is *the* standard baseline in quantitative finance — an actively managed strategy that doesn't beat buy-and-hold on a **risk-adjusted basis** is not earning its keep, because anyone could have replicated the benchmark by clicking Buy once and going on vacation. In this project the benchmark is computed in `src/evaluation/` from the same test-split price series the agent is evaluated on; there is no external index involved.
+- **Sharpe is annualized at √252.** Our returns are **daily**. The raw Sharpe `mean(r_t) / std(r_t)` is therefore a *daily* number and is hard to compare against industry conventions, which quote Sharpe per *year*. Annualization scales daily Sharpe by `√(trading days per year)`. The US stock market is open ≈ 252 days a year (365 minus weekends and ~10 federal holidays), hence the factor `√252 ≈ 15.87`. The square root (not a plain factor of 252) comes from how variance composes over time: if daily returns are roughly i.i.d., variance scales linearly with the number of days, so standard deviation scales with the square root. Mean return scales linearly. Their ratio therefore picks up a factor of `n / √n = √n`. Plug in `n = 252` and you get the convention every quant desk uses.
 
 | Ticker | Model Total Return | Model Sharpe | Model Max DD | Benchmark Total Return | Benchmark Sharpe | Benchmark Max DD |
 |---|---|---|---|---|---|---|
