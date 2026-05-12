@@ -213,6 +213,10 @@ Predict-Next: loads the latest checkpoint for the selected ticker, runs forward 
 
 ![Predict-Next view showing recommended action and asof timestamp](screenshots/gui_predict_next.png)
 
+Live system telemetry follows the actual worker subprocess — here on TSLA during a Prepare Data run, the panel shows Worker PID, backend (MPS), real CPU%, resident memory, and the unified-memory accelerator note:
+
+![GUI system telemetry showing live Worker PID, MPS backend, CPU and memory usage on TSLA](screenshots/gui_telemetry_with_worker.png)
+
 Backtest results dialog (launched from the GUI):
 
 ![Run Backtest results dialog with metric table](screenshots/gui_backtest_dialog.png)
